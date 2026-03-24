@@ -200,7 +200,11 @@ async def callback(request: Request):
     })
 
     refresh_token = create_access_token(
-        data={"sub": user_data["sub"]},
+        data={
+            "sub": user_data["sub"],
+            "email": user_data["email"],
+            "name": user_data.get("name"),
+        },
         expires_delta=timedelta(days=7))
 
     response = JSONResponse({"message": "Login successful"})
@@ -274,7 +278,9 @@ def refresh_token_endpoint(refresh_token: str = Cookie(None)):
 
     # ساخت access token جدید
     new_access_token = create_access_token({
-        "sub": payload["sub"]
+        "sub": payload["sub"],
+        "email": payload.get("email"),
+        "name": payload.get("name"),
     })
 
     response = JSONResponse({"message": "Token refreshed"})
