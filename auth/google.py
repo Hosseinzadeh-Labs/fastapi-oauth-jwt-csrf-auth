@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request, HTTPException, Cookie
+from datetime import timedelta
+
+from fastapi import APIRouter, Request, HTTPException, Cookie, Header
 from fastapi.responses import RedirectResponse, JSONResponse
 from auth.jwt_handler import SECRET_KEY
 import httpx
@@ -52,6 +54,7 @@ def login(request: Request):
     validate_google_oauth_config()
     redirect_uri = get_redirect_uri(request)
     state = secrets.token_urlsafe(16)
+    csrf_token = secrets.token_urlsafe(32)
 
     params = {
         "response_type": "code",
@@ -74,6 +77,14 @@ def login(request: Request):
         httponly=True,
         secure=False,  # ⚠️ True in production (HTTPS)
         samesite="lax"
+    )
+
+    response.set_cookie(
+    key="csrf_token",
+    value=csrf_token,
+    httponly=False,   # مهم! باید JS بتونه بخونه
+    secure=False,
+    samesite="lax"
     )
 
     return response
@@ -188,14 +199,24 @@ async def callback(request: Request):
         "name": user_data.get("name")
     })
 
+    refresh_token = create_access_token(
+        data={"sub": user_data["sub"]},
+        expires_delta=timedelta(days=7))
+
     response = JSONResponse({"message": "Login successful"})
     response.set_cookie(
         key="session_token",
         value=app_jwt,
         httponly=True,
         secure=False,  # Set to True in production when using HTTPS.
-        samesite="lax",
+        samesite="strict", # unti CSRF
     )
+    response.set_cookie(
+    key="refresh_token",
+    value=refresh_token,
+    httponly=True,
+    secure=False,
+    samesite="lax")
     return response
 
 
@@ -222,6 +243,51 @@ def profile(session_token: str = Cookie(None)):
         "email": payload.get("email"),
         "name": payload.get("name")
     }
+
+
+
+@router.get("/update-profile")
+def update_profile(
+    session_token: str = Cookie(None),
+    csrf_cookie: str = Cookie(None, alias="csrf_token"),
+    csrf_header: str = Header(None, alias="X-CSRF-Token"),
+):
+    
+    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        raise HTTPException(status_code=403, detail="CSRF failed")
+
+    return {"message": "updated successfully"}
+
+
+@router.get("/refresh")
+def refresh_token_endpoint(refresh_token: str = Cookie(None)):
+
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=["HS256"])
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    # ساخت access token جدید
+    new_access_token = create_access_token({
+        "sub": payload["sub"]
+    })
+
+    response = JSONResponse({"message": "Token refreshed"})
+
+    response.set_cookie(
+        key="session_token",
+        value=new_access_token,
+        httponly=True,
+        secure=False,
+        samesite="lax"
+    )
+
+    return response
 
 
 
