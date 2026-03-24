@@ -61,6 +61,18 @@ This system was tested against real-world attack scenarios:
 
 ---
 
+## 🔄 Authentication Flow (Step-by-Step)
+
+1. User logs in via Google OAuth
+2. Backend receives authorization code
+3. Google returns ID token
+4. Backend verifies ID token
+5. Access token (short-lived) is issued
+6. Refresh token (long-lived) is issued
+7. Tokens stored securely in HttpOnly cookies
+8. CSRF token protects state-changing requests
+
+
 ## 👨‍💻 Author
 
 Built as part of my journey into Application Security (AppSec)
